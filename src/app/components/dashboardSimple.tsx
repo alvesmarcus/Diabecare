@@ -47,27 +47,54 @@ export function DashboardSimple({
   };
 
   const getTodayGlicemia = () => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayEntries = calendarEntries.filter(e => e.date === today && e.type === 'glicemia');
-    if (todayEntries.length === 0) return '-';
-    const latest = todayEntries[todayEntries.length - 1];
-    return latest.value || '-';
-  };
+  const today = new Date().toISOString().split('T')[0];
+
+  const todayEntries = calendarEntries.filter(
+    e =>
+      e.date === today &&
+      e.type === 'glicemia' &&
+      e.patientCpf === userCpf
+  );
+
+  if (todayEntries.length === 0) return '-';
+
+  const latest = todayEntries[todayEntries.length - 1];
+  return latest.value || '-';
+};
 
   const getTodayMeals = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return calendarEntries.filter(e => e.date === today && e.type === 'refeicao').length;
-  };
+  const today = new Date().toISOString().split('T')[0];
+
+  return calendarEntries.filter(
+    e =>
+      e.date === today &&
+      e.type === 'refeicao' &&
+      e.patientCpf === userCpf
+  ).length;
+};
 
   const getTodayAppointments = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return calendarEntries.filter(e => e.date === today && e.type === 'consulta').length;
-  };
+  const today = new Date().toISOString().split('T')[0];
+
+  return calendarEntries.filter(
+    e =>
+      e.date === today &&
+      e.type === 'consulta' &&
+      e.patientCpf === userCpf
+  ).length;
+};
 
   const renderScreen = () => {
     switch (activeScreen) {
       case 'calendar':
-        return <CalendarScreenSimple entries={calendarEntries} onAddEntry={onAddCalendarEntry} />;
+  return (
+    <CalendarScreenSimple
+      entries={calendarEntries.filter(
+        entry => entry.patientCpf === userCpf
+      )}
+      onAddEntry={onAddCalendarEntry}
+    />
+  );
       case 'nutrition':
         return <NutritionalListSimple />;
       case 'medications':
