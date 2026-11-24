@@ -22,6 +22,7 @@ interface Medication {
   dosage: string;
   patientCpf: string;
   schedules: string[];
+  vezesPorDia: number;
 }
 
 interface CalendarEntry {
@@ -51,8 +52,19 @@ interface DoctorDashboardProps {
   medicationRequests: MedicationRequest[];
   onUpdateRequestStatus: (requestId: string, status: MedicationRequest['status']) => void;
   registeredUsers: User[];
-  onAddMedication: (patientCpf: string, name: string, dosage: string) => void;
-  onUpdateMedication: (medicationId: string, name: string, dosage: string) => void;
+  onAddMedication: (
+  patientCpf: string,
+  name: string,
+  dosage: string,
+  vezesPorDia: number
+) => void;
+
+onUpdateMedication: (
+  medicationId: string,
+  name: string,
+  dosage: string,
+  vezesPorDia: number
+) => void;
   onRemoveMedication: (medicationId: string) => void;
   medications: Medication[];
   calendarEntries: CalendarEntry[];
@@ -81,9 +93,23 @@ export function DoctorDashboardSimple({
   const [selectedPatient, setSelectedPatient] = useState<User | null>(null);
   const [selectedMedication, setSelectedMedication] = useState<Medication | null>(null);
   const [prescriptionData, setPrescriptionData] = useState({
-    medicationName: '',
-    dosage: ''
+  medicationName: '',
+  dosage: '',
+  vezesPorDia: 1
   });
+  const medicationOptions: Record<string, string[]> = {
+  Metformina: ['500 mg', '850 mg', '1.000 mg'],
+  Gliclazida: ['30 mg', '60 mg', '80 mg'],
+  Glimepirida: ['1 mg', '2 mg', '4 mg'],
+  Sitagliptina: ['25 mg', '50 mg', '100 mg'],
+  Dapagliflozina: ['5 mg', '10 mg'],
+  Empagliflozina: ['10 mg', '25 mg'],
+  Pioglitazona: ['15 mg', '30 mg', '45 mg'],
+  Linagliptina: ['5 mg']
+};
+
+  const availableDosages =
+  medicationOptions[prescriptionData.medicationName] || [];
   const [examData, setExamData] = useState({
     examType: '',
     description: '',
@@ -201,12 +227,21 @@ export function DoctorDashboardSimple({
 
     const currentMeds = getPatientMedications(selectedPatient.cpf);
     
-    onAddMedication(selectedPatient.cpf, prescriptionData.medicationName, prescriptionData.dosage);
+    onAddMedication(
+    selectedPatient.cpf,
+    prescriptionData.medicationName,
+    prescriptionData.dosage,
+    prescriptionData.vezesPorDia
+    );
     alert(`Medicamento ${prescriptionData.medicationName} prescrito com sucesso!`);
     
     setShowPrescriptionDialog(false);
     setSelectedPatient(null);
-    setPrescriptionData({ medicationName: '', dosage: '' });
+    setPrescriptionData({
+    medicationName: '',
+    dosage: '',
+    vezesPorDia: 1
+    });
   };
 
   const handleSubmitExam = () => {
@@ -239,8 +274,9 @@ export function DoctorDashboardSimple({
     setSelectedMedication(medication);
     setSelectedPatient(patient);
     setPrescriptionData({
-      medicationName: medication.name,
-      dosage: medication.dosage
+    medicationName: medication.name,
+    dosage: medication.dosage,
+    vezesPorDia: medication.vezesPorDia
     });
     setShowEditMedicationDialog(true);
   };
@@ -251,13 +287,22 @@ export function DoctorDashboardSimple({
       return;
     }
 
-    onUpdateMedication(selectedMedication.id, prescriptionData.medicationName, prescriptionData.dosage);
+    onUpdateMedication(
+    selectedMedication.id,
+    prescriptionData.medicationName,
+    prescriptionData.dosage,
+    prescriptionData.vezesPorDia
+    );
     alert('Medicamento atualizado com sucesso!');
     
     setShowEditMedicationDialog(false);
     setSelectedMedication(null);
     setSelectedPatient(null);
-    setPrescriptionData({ medicationName: '', dosage: '' });
+    setPrescriptionData({
+    medicationName: '',
+    dosage: '',
+    vezesPorDia: 1
+  });
   };
 
   const handleRemoveMedication = (medicationId: string, medicationName: string) => {
@@ -362,30 +407,60 @@ export function DoctorDashboardSimple({
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-2">Prescrever Medicamento</h3>
             <p className="text-sm text-gray-500 mb-4">Paciente: {selectedPatient.nome}</p>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Nome do Medicamento *</label>
-                <input
-                  type="text"
+                <select
                   value={prescriptionData.medicationName}
-                  onChange={(e) => setPrescriptionData(prev => ({ ...prev, medicationName: e.target.value }))}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    medicationName: e.target.value,
+                    dosage: ''
+                  }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: Metformina"
                   required
-                />
+                >
+                  <option value="">Selecione o medicamento...</option>
+                  {Object.keys(medicationOptions).map(medication => (
+                    <option key={medication} value={medication}>{medication}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2">Dosagem *</label>
-                <input
-                  type="text"
+                <select
                   value={prescriptionData.dosage}
-                  onChange={(e) => setPrescriptionData(prev => ({ ...prev, dosage: e.target.value }))}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    dosage: e.target.value
+                  }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ex: 850mg - 2x ao dia"
+                  disabled={!prescriptionData.medicationName}
                   required
-                />
+                >
+                  <option value="">Selecione a dosagem...</option>
+                  {availableDosages.map(dosage => (
+                    <option key={dosage} value={dosage}>{dosage}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Frequência diária *</label>
+                <select
+                  value={prescriptionData.vezesPorDia}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    vezesPorDia: Number(e.target.value)
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value={1}>1 vez ao dia</option>
+                  <option value={2}>2 vezes ao dia</option>
+                </select>
               </div>
 
               <div className="flex gap-2 pt-4">
@@ -393,7 +468,7 @@ export function DoctorDashboardSimple({
                   onClick={() => {
                     setShowPrescriptionDialog(false);
                     setSelectedPatient(null);
-                    setPrescriptionData({ medicationName: '', dosage: '' });
+                    setPrescriptionData({ medicationName: '', dosage: '', vezesPorDia: 1 });
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
@@ -416,28 +491,60 @@ export function DoctorDashboardSimple({
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-semibold mb-2">Editar Medicamento</h3>
             <p className="text-sm text-gray-500 mb-4">Paciente: {selectedPatient.nome}</p>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Nome do Medicamento *</label>
-                <input
-                  type="text"
+                <select
                   value={prescriptionData.medicationName}
-                  onChange={(e) => setPrescriptionData(prev => ({ ...prev, medicationName: e.target.value }))}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    medicationName: e.target.value,
+                    dosage: ''
+                  }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
-                />
+                >
+                  <option value="">Selecione o medicamento...</option>
+                  {Object.keys(medicationOptions).map(medication => (
+                    <option key={medication} value={medication}>{medication}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2">Dosagem *</label>
-                <input
-                  type="text"
+                <select
                   value={prescriptionData.dosage}
-                  onChange={(e) => setPrescriptionData(prev => ({ ...prev, dosage: e.target.value }))}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    dosage: e.target.value
+                  }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!prescriptionData.medicationName}
+                  required
+                >
+                  <option value="">Selecione a dosagem...</option>
+                  {availableDosages.map(dosage => (
+                    <option key={dosage} value={dosage}>{dosage}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Frequência diária *</label>
+                <select
+                  value={prescriptionData.vezesPorDia}
+                  onChange={(e) => setPrescriptionData(prev => ({
+                    ...prev,
+                    vezesPorDia: Number(e.target.value)
+                  }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
-                />
+                >
+                  <option value={1}>1 vez ao dia</option>
+                  <option value={2}>2 vezes ao dia</option>
+                </select>
               </div>
 
               <div className="flex gap-2 pt-4">
@@ -446,7 +553,7 @@ export function DoctorDashboardSimple({
                     setShowEditMedicationDialog(false);
                     setSelectedPatient(null);
                     setSelectedMedication(null);
-                    setPrescriptionData({ medicationName: '', dosage: '' });
+                    setPrescriptionData({ medicationName: '', dosage: '', vezesPorDia: 1 });
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                 >

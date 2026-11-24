@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CalendarScreenSimple } from './CalendarScreenSimple';
 import { NutritionalListSimple } from './nutritionalListSimple';
 import { MedicationManager, type Medication } from './medicationManager';
@@ -22,22 +22,118 @@ interface DashboardProps {
   calendarEntries: CalendarEntry[];
   onAddCalendarEntry: (entry: Omit<CalendarEntry, 'id' | 'patientCpf'>) => void;
   medications: Medication[];
-  onUpdateMedicationSchedules: (medicationId: string, schedules: string[]) => void;
+  onUpdateMedicationSchedules: (medicationId: string, schedules: string[]) => void | Promise<void>;
 }
 
 type ActiveScreen = 'home' | 'calendar' | 'nutrition' | 'medications' | 'calculator';
 
-export function DashboardSimple({ 
-  user, 
+const VALID_SCREENS: ActiveScreen[] = [
+  'home',
+  'calendar',
+  'nutrition',
+  'medications',
+  'calculator'
+];
+
+interface DashboardHistoryState {
+  diabecareApp: true;
+  appState: 'dashboard';
+  dashboardScreen?: ActiveScreen;
+}
+
+export function DashboardSimple({
+  user,
   userCpf,
-  onLogout, 
+  onLogout,
   onMedicationRequest,
   calendarEntries,
   onAddCalendarEntry,
   medications,
   onUpdateMedicationSchedules
 }: DashboardProps) {
-  const [activeScreen, setActiveScreen] = useState<ActiveScreen>('home');
+  const storageKey = `diabecare-screen-${userCpf}`;
+
+  const [activeScreen, setActiveScreen] = useState<ActiveScreen>(() => {
+    const savedScreen = localStorage.getItem(storageKey);
+    return VALID_SCREENS.includes(savedScreen as ActiveScreen)
+      ? (savedScreen as ActiveScreen)
+      : 'home';
+  });
+
+  const activeScreenRef = useRef<ActiveScreen>(activeScreen);
+
+  useEffect(() => {
+    activeScreenRef.current = activeScreen;
+    localStorage.setItem(storageKey, activeScreen);
+  }, [storageKey, activeScreen]);
+
+  // Sincroniza o painel com o histórico sem apagar a entrada de login criada pelo App.tsx.
+  useEffect(() => {
+    const currentState = window.history.state as
+      | (DashboardHistoryState & { dashboardScreen?: ActiveScreen })
+      | null;
+
+    // O App.tsx cria a entrada do painel após o login.
+    // Apenas acrescentamos a tela atual nessa mesma entrada, preservando a anterior (login).
+    if (
+      currentState?.diabecareApp === true &&
+      currentState.appState === 'dashboard'
+    ) {
+      const screenFromHistory = currentState.dashboardScreen;
+
+      if (screenFromHistory && VALID_SCREENS.includes(screenFromHistory)) {
+        activeScreenRef.current = screenFromHistory;
+        setActiveScreen(screenFromHistory);
+      } else {
+        window.history.replaceState(
+          {
+            ...currentState,
+            dashboardScreen: activeScreenRef.current
+          },
+          ''
+        );
+      }
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as
+        | (DashboardHistoryState & { dashboardScreen?: ActiveScreen })
+        | null;
+
+      // Se o estado for login/seleção de perfil, o App.tsx cuida da troca de tela.
+      // Aqui tratamos somente a navegação interna do painel do paciente.
+      if (
+        state?.diabecareApp === true &&
+        state.appState === 'dashboard' &&
+        state.dashboardScreen &&
+        VALID_SCREENS.includes(state.dashboardScreen)
+      ) {
+        activeScreenRef.current = state.dashboardScreen;
+        setActiveScreen(state.dashboardScreen);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  const navigateToScreen = (screen: ActiveScreen) => {
+    if (screen === activeScreenRef.current) return;
+
+    const nextState: DashboardHistoryState = {
+      diabecareApp: true,
+      appState: 'dashboard',
+      dashboardScreen: screen
+    };
+
+    window.history.pushState(nextState, '');
+    activeScreenRef.current = screen;
+    setActiveScreen(screen);
+  };
+
   const [showMedicationDialog, setShowMedicationDialog] = useState(false);
 
   const handleMedicationRequest = () => {
@@ -46,57 +142,49 @@ export function DashboardSimple({
     setShowMedicationDialog(true);
   };
 
+  const getTodayDate = () => new Date().toISOString().split('T')[0];
+
   const getTodayGlicemia = () => {
-  const today = new Date().toISOString().split('T')[0];
+    const todayEntries = calendarEntries.filter(
+      entry =>
+        entry.date === getTodayDate() &&
+        entry.type === 'glicemia' &&
+        entry.patientCpf === userCpf
+    );
 
-  const todayEntries = calendarEntries.filter(
-    e =>
-      e.date === today &&
-      e.type === 'glicemia' &&
-      e.patientCpf === userCpf
-  );
+    if (todayEntries.length === 0) return '-';
+    return todayEntries[todayEntries.length - 1].value || '-';
+  };
 
-  if (todayEntries.length === 0) return '-';
+  const getTodayMeals = () =>
+    calendarEntries.filter(
+      entry =>
+        entry.date === getTodayDate() &&
+        entry.type === 'refeicao' &&
+        entry.patientCpf === userCpf
+    ).length;
 
-  const latest = todayEntries[todayEntries.length - 1];
-  return latest.value || '-';
-};
-
-  const getTodayMeals = () => {
-  const today = new Date().toISOString().split('T')[0];
-
-  return calendarEntries.filter(
-    e =>
-      e.date === today &&
-      e.type === 'refeicao' &&
-      e.patientCpf === userCpf
-  ).length;
-};
-
-  const getTodayAppointments = () => {
-  const today = new Date().toISOString().split('T')[0];
-
-  return calendarEntries.filter(
-    e =>
-      e.date === today &&
-      e.type === 'consulta' &&
-      e.patientCpf === userCpf
-  ).length;
-};
+  const getTodayAppointments = () =>
+    calendarEntries.filter(
+      entry =>
+        entry.date === getTodayDate() &&
+        entry.type === 'consulta' &&
+        entry.patientCpf === userCpf
+    ).length;
 
   const renderScreen = () => {
     switch (activeScreen) {
       case 'calendar':
-  return (
-    <CalendarScreenSimple
-      entries={calendarEntries.filter(
-        entry => entry.patientCpf === userCpf
-      )}
-      onAddEntry={onAddCalendarEntry}
-    />
-  );
+        return (
+          <CalendarScreenSimple
+            entries={calendarEntries.filter(entry => entry.patientCpf === userCpf)}
+            onAddEntry={onAddCalendarEntry}
+          />
+        );
+
       case 'nutrition':
         return <NutritionalListSimple />;
+
       case 'medications':
         return (
           <div className="space-y-6">
@@ -104,29 +192,31 @@ export function DashboardSimple({
               <h2 className="text-2xl font-semibold">Meus Medicamentos</h2>
               <p className="text-gray-500">Gerencie os horários dos seus medicamentos</p>
             </div>
-            <MedicationManager 
+            <MedicationManager
               medications={medications}
               onUpdateSchedules={onUpdateMedicationSchedules}
             />
           </div>
         );
+
       case 'calculator':
         return <CarbCalculator />;
+
       default:
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div 
+              <div
                 className="bg-white border rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => setActiveScreen('calendar')}
+                onClick={() => navigateToScreen('calendar')}
               >
                 <h3 className="font-semibold mb-2">📅 Calendário</h3>
                 <p className="text-sm text-gray-500">Registre glicemia, consultas e refeições</p>
               </div>
 
-              <div 
+              <div
                 className="bg-white border rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => setActiveScreen('medications')}
+                onClick={() => navigateToScreen('medications')}
               >
                 <h3 className="font-semibold mb-2">💊 Meus Medicamentos</h3>
                 <p className="text-sm text-gray-500">Gerencie horários dos remédios</p>
@@ -137,7 +227,7 @@ export function DashboardSimple({
                 )}
               </div>
 
-              <div 
+              <div
                 className="bg-white border rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow"
                 onClick={handleMedicationRequest}
               >
@@ -145,9 +235,9 @@ export function DashboardSimple({
                 <p className="text-sm text-gray-500">Receba seus medicamentos em casa</p>
               </div>
 
-              <div 
+              <div
                 className="bg-white border rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => setActiveScreen('nutrition')}
+                onClick={() => navigateToScreen('nutrition')}
               >
                 <h3 className="font-semibold mb-2">🍎 Lista Nutricional</h3>
                 <p className="text-sm text-gray-500">Consulte alimentos e índice glicêmico</p>
@@ -155,9 +245,9 @@ export function DashboardSimple({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div 
+              <div
                 className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border rounded-lg p-6 cursor-pointer hover:shadow-xl transition-shadow"
-                onClick={() => setActiveScreen('calculator')}
+                onClick={() => navigateToScreen('calculator')}
               >
                 <h3 className="font-semibold mb-2">🧮 Calculadora de Carboidratos</h3>
                 <p className="text-sm opacity-90">Calcule a dose de insulina necessária</p>
@@ -193,18 +283,33 @@ export function DashboardSimple({
                 </div>
                 <div className="space-y-2">
                   {calendarEntries
-                    .filter(e => e.type === 'consulta' && e.date >= new Date().toISOString().split('T')[0])
+                    .filter(
+                      entry =>
+                        entry.patientCpf === userCpf &&
+                        entry.type === 'consulta' &&
+                        entry.date >= getTodayDate()
+                    )
                     .slice(0, 5)
                     .map(exam => {
-                      const examDate = new Date(exam.date + 'T00:00:00');
-                      const isToday = exam.date === new Date().toISOString().split('T')[0];
+                      const examDate = new Date(`${exam.date}T00:00:00`);
+                      const isToday = exam.date === getTodayDate();
+
                       return (
-                        <div key={exam.id} className={`flex items-center justify-between p-4 rounded-lg ${
-                          isToday ? 'bg-orange-100 border-2 border-orange-400' : 'bg-white border border-gray-200'
-                        }`}>
+                        <div
+                          key={exam.id}
+                          className={`flex items-center justify-between p-4 rounded-lg ${
+                            isToday
+                              ? 'bg-orange-100 border-2 border-orange-400'
+                              : 'bg-white border border-gray-200'
+                          }`}
+                        >
                           <div>
                             <div className="flex items-center gap-2">
-                              {isToday && <span className="text-xs font-bold text-orange-600 bg-orange-200 px-2 py-1 rounded">HOJE</span>}
+                              {isToday && (
+                                <span className="text-xs font-bold text-orange-600 bg-orange-200 px-2 py-1 rounded">
+                                  HOJE
+                                </span>
+                              )}
                               <p className="font-medium">{exam.description}</p>
                             </div>
                             <p className="text-sm text-gray-500 mt-1">
@@ -223,14 +328,19 @@ export function DashboardSimple({
               <div className="bg-white border rounded-lg p-6">
                 <h3 className="font-semibold mb-4">Próximos Medicamentos</h3>
                 <div className="space-y-2">
-                  {medications.slice(0, 3).map(med => (
-                    <div key={med.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  {medications.slice(0, 3).map(medication => (
+                    <div
+                      key={medication.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
                       <div>
-                        <p className="font-medium">{med.name}</p>
-                        <p className="text-sm text-gray-500">{med.dosage}</p>
+                        <p className="font-medium">{medication.name}</p>
+                        <p className="text-sm text-gray-500">{medication.dosage}</p>
                       </div>
                       <div className="text-sm text-blue-600">
-                        {med.schedules.length > 0 ? `${med.schedules.length} horário(s)` : 'Sem horários'}
+                        {medication.schedules.length > 0
+                          ? `${medication.schedules.length} horário(s)`
+                          : 'Sem horários'}
                       </div>
                     </div>
                   ))}
@@ -255,7 +365,9 @@ export function DashboardSimple({
                 </p>
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-blue-900 mb-2">📦 Você receberá no endereço cadastrado:</p>
+                <p className="text-sm font-medium text-blue-900 mb-2">
+                  📦 Você receberá no endereço cadastrado:
+                </p>
                 <ul className="text-sm text-blue-800 space-y-1 ml-4">
                   <li>• Todas as suas medicações prescritas</li>
                   <li>• Insumos para medição de glicemia</li>
@@ -290,34 +402,45 @@ export function DashboardSimple({
                 <p className="text-sm text-gray-500">Olá, {user}!</p>
               </div>
             </div>
+
             <nav className="hidden md:flex items-center space-x-4">
               <button
-                onClick={() => setActiveScreen('home')}
-                className={`px-4 py-2 rounded-md ${activeScreen === 'home' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+                onClick={() => navigateToScreen('home')}
+                className={`px-4 py-2 rounded-md ${
+                  activeScreen === 'home' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'
+                }`}
               >
                 Início
               </button>
               <button
-                onClick={() => setActiveScreen('calendar')}
-                className={`px-4 py-2 rounded-md ${activeScreen === 'calendar' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+                onClick={() => navigateToScreen('calendar')}
+                className={`px-4 py-2 rounded-md ${
+                  activeScreen === 'calendar' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'
+                }`}
               >
                 Calendário
               </button>
               <button
-                onClick={() => setActiveScreen('medications')}
-                className={`px-4 py-2 rounded-md ${activeScreen === 'medications' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+                onClick={() => navigateToScreen('medications')}
+                className={`px-4 py-2 rounded-md ${
+                  activeScreen === 'medications' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'
+                }`}
               >
                 Medicamentos
               </button>
               <button
-                onClick={() => setActiveScreen('calculator')}
-                className={`px-4 py-2 rounded-md ${activeScreen === 'calculator' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+                onClick={() => navigateToScreen('calculator')}
+                className={`px-4 py-2 rounded-md ${
+                  activeScreen === 'calculator' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'
+                }`}
               >
                 Calculadora
               </button>
               <button
-                onClick={() => setActiveScreen('nutrition')}
-                className={`px-4 py-2 rounded-md ${activeScreen === 'nutrition' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}
+                onClick={() => navigateToScreen('nutrition')}
+                className={`px-4 py-2 rounded-md ${
+                  activeScreen === 'nutrition' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'
+                }`}
               >
                 Nutrição
               </button>
@@ -328,6 +451,7 @@ export function DashboardSimple({
                 🚪 Sair
               </button>
             </nav>
+
             <div className="md:hidden">
               <button
                 onClick={onLogout}
@@ -347,36 +471,46 @@ export function DashboardSimple({
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t">
         <div className="grid grid-cols-6 py-2">
           <button
-            onClick={() => setActiveScreen('home')}
-            className={`flex flex-col items-center py-2 ${activeScreen === 'home' ? 'text-blue-600' : 'text-gray-600'}`}
+            onClick={() => navigateToScreen('home')}
+            className={`flex flex-col items-center py-2 ${
+              activeScreen === 'home' ? 'text-blue-600' : 'text-gray-600'
+            }`}
           >
             <span className="text-xl">🏠</span>
             <span className="text-xs">Início</span>
           </button>
           <button
-            onClick={() => setActiveScreen('calendar')}
-            className={`flex flex-col items-center py-2 ${activeScreen === 'calendar' ? 'text-blue-600' : 'text-gray-600'}`}
+            onClick={() => navigateToScreen('calendar')}
+            className={`flex flex-col items-center py-2 ${
+              activeScreen === 'calendar' ? 'text-blue-600' : 'text-gray-600'
+            }`}
           >
             <span className="text-xl">📅</span>
             <span className="text-xs">Calendário</span>
           </button>
           <button
-            onClick={() => setActiveScreen('medications')}
-            className={`flex flex-col items-center py-2 ${activeScreen === 'medications' ? 'text-blue-600' : 'text-gray-600'}`}
+            onClick={() => navigateToScreen('medications')}
+            className={`flex flex-col items-center py-2 ${
+              activeScreen === 'medications' ? 'text-blue-600' : 'text-gray-600'
+            }`}
           >
             <span className="text-xl">💊</span>
             <span className="text-xs">Remédios</span>
           </button>
           <button
-            onClick={() => setActiveScreen('calculator')}
-            className={`flex flex-col items-center py-2 ${activeScreen === 'calculator' ? 'text-blue-600' : 'text-gray-600'}`}
+            onClick={() => navigateToScreen('calculator')}
+            className={`flex flex-col items-center py-2 ${
+              activeScreen === 'calculator' ? 'text-blue-600' : 'text-gray-600'
+            }`}
           >
             <span className="text-xl">🧮</span>
             <span className="text-xs">Calc</span>
           </button>
           <button
-            onClick={() => setActiveScreen('nutrition')}
-            className={`flex flex-col items-center py-2 ${activeScreen === 'nutrition' ? 'text-blue-600' : 'text-gray-600'}`}
+            onClick={() => navigateToScreen('nutrition')}
+            className={`flex flex-col items-center py-2 ${
+              activeScreen === 'nutrition' ? 'text-blue-600' : 'text-gray-600'
+            }`}
           >
             <span className="text-xl">🍎</span>
             <span className="text-xs">Nutrição</span>

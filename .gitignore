@@ -1,6 +1,14 @@
-node_modules/
+﻿node_modules/
 dist/
+
+# Variáveis de ambiente
 .env
+.env.*
+!.env.example
+
+# Backend
 server/node_modules/
 server/dist/
 server/.env
+server/.env.*
+!server/.env.example

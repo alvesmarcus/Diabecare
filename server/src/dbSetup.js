@@ -1,3 +1,4 @@
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { pool } from './db.js';
@@ -8,14 +9,21 @@ autoRunSetup().catch((err) => {
 });
 
 async function autoRunSetup() {
-  const sqlFile = path.resolve(process.cwd(), 'sql_init.sql');
-  if (!fs.existsSync(sqlFile)) {
-    console.warn('[server] sql_init.sql not found, skipping db setup');
+  const possiblePaths = [
+    path.resolve(process.cwd(), 'sql_init.sql'),
+    path.resolve(process.cwd(), 'server', 'sql_init.sql')
+  ];
+
+  const sqlFile = possiblePaths.find((file) => fs.existsSync(file));
+
+  if (!sqlFile) {
+    console.warn('[server] sql_init.sql not found', possiblePaths);
     return;
   }
 
   const sql = fs.readFileSync(sqlFile, 'utf-8');
+
   await pool.query(sql);
+
   console.log('[server] db schema initialized/verified from sql_init.sql');
 }
-

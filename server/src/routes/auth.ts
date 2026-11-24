@@ -4,6 +4,36 @@ import { query } from '../db.js';
 
 
 export const authRouter = Router();
+console.log('[auth.js] Arquivo de rotas carregado!');
+
+
+
+
+// =========================================
+// LISTAR TODOS OS PACIENTES CADASTRADOS
+// =========================================
+authRouter.get('/patients', async (req, res) => {
+  try {
+    const rows = await query(
+      `SELECT
+         nome,
+         endereco,
+         cpf,
+         cartao_sus AS "cartaoSus"
+       FROM pacientes
+       ORDER BY nome ASC`
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    console.error('[patients list]', error);
+
+    return res.status(500).json({
+      error: 'Erro ao listar pacientes.'
+    });
+  }
+});
+
 
 type LoginBody = {
   identifier: string;

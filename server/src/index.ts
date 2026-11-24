@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 
 import { authRouter } from './routes/auth.js';
+console.log('[index.ts] authRouter importado:', typeof authRouter);
 import './dbSetup.js';
 
 const app = express();
